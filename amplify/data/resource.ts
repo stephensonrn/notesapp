@@ -1,7 +1,7 @@
 // Keep the existing import
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 
-// Define the Enum for transaction types first
+// Keep existing Enum for LedgerEntry types
 const LedgerEntryType = a.enum([
   'INVOICE',
   'CREDIT_NOTE',
@@ -9,20 +9,31 @@ const LedgerEntryType = a.enum([
   'DECREASE_ADJUSTMENT',
 ]);
 
-// Define the schema, replacing the Note model with LedgerEntry
+// Define the schema
 const schema = a.schema({
+  // LedgerEntry model remains as it was (no status field needed now)
   LedgerEntry: a
     .model({
-      // --- CORRECTED LINE ---
-      type: LedgerEntryType, // Assign the Enum type directly. Required by default.
-      // --- END CORRECTION ---
-      amount: a.float().required(),    // Amount is a required float
-      description: a.string(),         // Optional description field
-      // `createdAt` & `updatedAt` timestamps are typically added automatically by Amplify
-      // `owner` field is implicitly handled by the authorization rule below
+      type: LedgerEntryType, // Required by default
+      amount: a.float().required(),
+      description: a.string(),
+      // createdAt/updatedAt automatically added
     })
     .authorization((allow) => [
-      allow.owner(), // Allow owner full access (create, read, update, delete)
+      allow.owner(), // Allow owner full access
+    ]),
+
+  // NEW: Model to store manually input account status values
+  // Assume only one record per user (owner)
+  AccountStatus: a
+    .model({
+      // Manual input for total value of unapproved invoices
+      totalUnapprovedInvoiceValue: a.float().required().default(0),
+      // Manual input for current account balance (facility usage)
+      currentAccountBalance: a.float().required().default(0),
+    })
+    .authorization((allow) => [
+       allow.owner(), // Allow owner to manage their own status record
     ]),
 });
 

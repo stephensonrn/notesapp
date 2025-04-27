@@ -1,24 +1,26 @@
-// src/App.jsx
+// src/App.tsx
+
 import React from 'react';
-
-// 1. Import Authenticator and styles
 import { Authenticator } from '@aws-amplify/ui-react';
-import '@aws-amplify/ui-react/styles.css'; // Default Amplify UI styles
-
-// Import your SalesLedger component (we'll create this next)
+import '@aws-amplify/ui-react/styles.css';
 import SalesLedger from './SalesLedger';
+import './App.css'; // Make sure you import the CSS file with the logo style
 
 function App() {
   return (
-    // 2. Wrap the core app content with Authenticator
     <Authenticator>
       {({ signOut, user }) => (
         <main>
-          {/* Pass user info and signOut to your main app content if needed */}
-          <h1>Hello, {user?.signInDetails?.loginId ?? 'User'}!</h1>
-          {/* Render the SalesLedger component only when authenticated */}
-          <SalesLedger />
+          {/* --- ADD THE LOGO IMAGE HERE --- */}
+          <img
+            src="/Aurum.png" // Path to the logo in the 'public' folder
+            alt="Aurum Company Logo"
+            className="company-logo" // Apply the CSS class for positioning
+          />
+          {/* --- END OF ADDED LOGO --- */}
 
+          <h1>Hello, {user?.signInDetails?.loginId ?? 'User'}!</h1>
+          <SalesLedger />
           <button onClick={signOut} style={{ marginTop: '20px' }}>Sign out</button>
         </main>
       )}
