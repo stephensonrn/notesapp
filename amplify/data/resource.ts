@@ -1,7 +1,8 @@
-// Keep the existing import
+// Filename: amplify/data/resource.ts
+
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 
-// Keep existing Enum for LedgerEntry types
+// Define Enum used by LedgerEntry
 const LedgerEntryType = a.enum([
   'INVOICE',
   'CREDIT_NOTE',
@@ -9,41 +10,40 @@ const LedgerEntryType = a.enum([
   'DECREASE_ADJUSTMENT',
 ]);
 
-// Define the schema
+// Define the schema containing ONLY the data models
 const schema = a.schema({
-  // LedgerEntry model remains as it was (no status field needed now)
+  // LedgerEntry model definition
   LedgerEntry: a
     .model({
       type: LedgerEntryType, // Required by default
       amount: a.float().required(),
       description: a.string(),
-      // createdAt/updatedAt automatically added
+      // createdAt & updatedAt are automatically added by @model
     })
     .authorization((allow) => [
-      allow.owner(), // Allow owner full access
+      allow.owner() // Grant owner full access
     ]),
 
-  // NEW: Model to store manually input account status values
-  // Assume only one record per user (owner)
+  // AccountStatus model definition
   AccountStatus: a
     .model({
-      // Manual input for total value of unapproved invoices
       totalUnapprovedInvoiceValue: a.float().required().default(0),
-      // Manual input for current account balance (facility usage)
       currentAccountBalance: a.float().required().default(0),
+      // createdAt & updatedAt are automatically added by @model
     })
     .authorization((allow) => [
-       allow.owner(), // Allow owner to manage their own status record
+       allow.owner() // Grant owner full access
     ]),
-});
+}); // End of a.schema({...})
 
-// Keep the existing Schema export
-export type Schema = ClientSchema<typeof schema>;
-
-// Keep the existing data export, including authorizationModes
+// Define the data resource, passing the schema and authorization config
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: 'userPool', // Keep your existing default mode
+    defaultAuthorizationMode: 'userPool', // Your default auth mode
   },
+  // NOTE: No 'resolvers' or 'functions' properties here
 });
+
+// Export the TypeScript type for the schema (used by the client)
+export type Schema = ClientSchema<typeof schema>;
