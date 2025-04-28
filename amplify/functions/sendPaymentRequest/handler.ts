@@ -84,7 +84,7 @@ export const handler: AppSyncResolverHandler<RequestPaymentArgs, string | null> 
         // --- Ensure this line is uncommented ---
         await sesClient.send(new SendEmailCommand(sendEmailParams));
         console.log("Email send command issued successfully.");
-
+// Triggering a new build - April 28
         // Return success message
         // Using '!' because the check above guarantees it's a number here
         return `Payment request for £${requestedAmount!.toFixed(2)} submitted successfully.`;
