@@ -1,32 +1,48 @@
 // Filename: amplify/backend.ts
 
 import { defineBackend } from '@aws-amplify/backend';
-import { defineFunction } from '@aws-amplify/backend-function'; // Keep this import
-
+import { defineFunction } from '@aws-amplify/backend-function';
 import { auth } from './auth/resource'; // Your auth resource
-import { data } from './data/resource'; // Your data resource (models ONLY from data/resource.ts)
+import { data } from './data/resource'; // Your data resource
 import * as path from 'path';
-// NO CDK imports needed here for now
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam'; // Keep for permissions attempt
+// Removed CdkFunction import as escape hatch failed before
 
-// 1. Define the Lambda Function Resource (MINIMAL definition)
-// Exporting it might allow referencing it later if needed
+// 1. Define the Lambda Function Resource
 export const sendPaymentRequestFunction = defineFunction({
-  // No name, no permissions defined here to ensure compilation
+  name: 'sendPaymentRequestFn', // Keep name for consistency if referenced elsewhere
   entry: path.join('functions', 'sendPaymentRequest', 'handler.ts'),
   environment: {
-    // --- IMPORTANT: Replace with your verified SES sender email ---
+    // --- Add User Pool ID ---
+    // Access the physical user pool ID output from the auth resource
+    // The exact path '.userPoolId' depends on how 'defineAuth' exposes outputs. Verify if needed.
+    USER_POOL_ID: auth.resources.userPool.userPoolId,
+    // --- Keep FROM_EMAIL (ensure it has your real verified email) ---
     FROM_EMAIL: 'ross@aurumif.com',
   },
+  // --- Attempt to add Cognito AdminGetUser permission ---
+  // This syntax might still fail compilation based on previous errors,
+  // but it's the intended place if supported. If it fails, remove this block
+  // and plan to add the permission manually in IAM after deployment.
+  allowPolicies: (grant) => [
+      // Grant SES Send permission (as attempted before)
+      grant.createAwsSdkCalls({
+          actions: ["ses:SendEmail"],
+          resources: ["*"],
+      }),
+      // Grant Cognito Read permission
+      grant.createAwsSdkCalls({
+          actions: ["cognito-idp:AdminGetUser"],
+          // Restrict resource to the specific user pool
+          resources: [auth.resources.userPool.userPoolArn], // Use ARN output from auth resource
+      })
+  ],
+  // --- End Permissions Attempt ---
 });
 
-// 2. Define and Export the Backend - constituent resources ONLY
+// 2. Define and Export the Backend
 export const backend = defineBackend({
   auth,
-  data, // Provides the API for data models only defined in data/resource.ts
-  sendPaymentRequestFunction, // Defines the function resource itself
+  data,
+  sendPaymentRequestFunction,
 });
-
-// NOTE: The 'defineApi' import and usage have been removed.
-// NOTE: The attempt to add permissions via 'backend.resources...' has been removed.
-// Linking the function to an API mutation and adding SES permissions
-// need to be solved separately using a different method.

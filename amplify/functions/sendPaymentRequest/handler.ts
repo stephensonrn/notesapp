@@ -1,76 +1,110 @@
 // amplify/functions/sendPaymentRequest/handler.ts
 import type { AppSyncResolverHandler } from 'aws-lambda';
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+// --- Import Cognito Client ---
+import { CognitoIdentityProviderClient, AdminGetUserCommand } from "@aws-sdk/client-cognito-identity-provider";
+// --- End Import ---
 
 const sesClient = new SESClient({});
+// --- Initialize Cognito Client ---
+const cognitoClient = new CognitoIdentityProviderClient({});
+// --- End Init ---
 
-// Define expected arguments structure (adjust if needed based on schema)
+
+// Define expected arguments structure
 interface RequestPaymentArgs {
-    input?: {
+    input: {
         amount: number;
     }
-    amount?: number; // Optional fallback if amount is top-level
 }
 
-// Expected structure of the identity object from AppSync + Cognito User Pools
-// Note: claims content can vary based on token type (access vs id) and pool config
-interface CognitoIdentity {
-    claims?: {
-        sub?: string;
-        email?: string; // This might or might not be present
-        email_verified?: boolean;
-        "cognito:username"?: string; // Often same as top-level username/sub
-        [key: string]: any; // Allow other claims
-    };
+// Define a basic type for Cognito identity passed by AppSync
+interface AppSyncCognitoIdentity {
+    claims?: { [key: string]: any; };
     sub?: string;
-    issuer?: string;
-    username?: string; // Often the UUID-like sub
+    username?: string; // Often the sub/GUID
     sourceIp?: string[];
-    defaultAuthStrategy?: string;
-    groups?: string[] | null;
+    [key: string]: any;
 }
 
 // Return type must be string | null
 export const handler: AppSyncResolverHandler<RequestPaymentArgs, string | null> = async (event) => {
-    const FROM_EMAIL = process.env.FROM_EMAIL; // Assumes this is correctly set via deployment
-    const TO_EMAIL = "ross@aurumif.com"; // Hardcoded recipient
+    // Read environment variables INSIDE handler
+    const FROM_EMAIL = process.env.FROM_EMAIL;
+    const TO_EMAIL = "ross@aurumif.com";
+    const USER_POOL_ID = process.env.USER_POOL_ID; // Read User Pool ID
 
     console.log('EVENT:', JSON.stringify(event, null, 2));
 
-    if (!FROM_EMAIL) {
-        console.error('FROM_EMAIL environment variable not set correctly in deployed function.');
-        return 'Error: Lambda configuration error (FROM_EMAIL).'; // User-friendly error
+    if (!FROM_EMAIL || FROM_EMAIL === 'your-verified-sender-email@example.com') {
+        console.error('FROM_EMAIL environment variable not set correctly.');
+        return 'Error: Lambda configuration error (FROM_EMAIL).';
+    }
+    if (!USER_POOL_ID) {
+        console.error('USER_POOL_ID environment variable not set correctly.');
+        return 'Error: Lambda configuration error (USER_POOL_ID).';
     }
 
     // Extract Arguments
     const args = event.arguments;
     console.log('Arguments Received:', JSON.stringify(args));
-    const requestedAmount = args?.input?.amount ?? args?.amount;
+    const requestedAmount = args?.input?.amount;
     console.log('Extracted requestedAmount:', requestedAmount);
 
     // Validate Amount
     if (typeof requestedAmount !== 'number' || requestedAmount <= 0) {
         console.error("Invalid amount type or value:", requestedAmount);
-        return 'Error: Invalid payment amount provided.'; // User-friendly error
+        return 'Error: Invalid payment amount provided.';
     }
 
-    // Extract User Identity (Prioritize Email Claim)
-    const identity = event.identity as CognitoIdentity | null; // Type assertion
+    // --- User Identity Extraction Logic ---
+    const identity = event.identity as AppSyncCognitoIdentity | null;
     console.log('Identity Object:', JSON.stringify(identity, null, 2));
 
-    let userIdentifier = 'Unknown User';
-    if (identity?.claims?.email) { // Check for email in claims first
-         userIdentifier = identity.claims.email;
-    } else if (identity?.username) { // Fallback to top-level username
-         userIdentifier = identity.username;
-    } else if (identity?.sub) { // Fallback to top-level sub if username also missing
-        userIdentifier = identity.sub;
+    let userIdentifier: string = 'Unknown User'; // Default
+    let resolvedEmail: string | null = null;
+
+    const cognitoUsername = identity?.username; // Get the Cognito username (GUID/sub)
+
+    if (cognitoUsername) {
+        userIdentifier = cognitoUsername; // Use username as fallback identifier
+        try {
+            // Attempt to get full user details from Cognito using the username
+            console.log(`Attempting AdminGetUser for username: ${cognitoUsername} in pool ${USER_POOL_ID}`);
+            const getUserCommand = new AdminGetUserCommand({
+                UserPoolId: USER_POOL_ID,
+                Username: cognitoUsername,
+            });
+            const userData = await cognitoClient.send(getUserCommand);
+            console.log("AdminGetUser Response:", userData);
+
+            // Find the email attribute
+            const emailAttribute = userData.UserAttributes?.find(attr => attr.Name === 'email');
+            if (emailAttribute?.Value) {
+                resolvedEmail = emailAttribute.Value;
+                userIdentifier = resolvedEmail; // Prioritize email if found
+                console.log(`Found email via AdminGetUser: ${resolvedEmail}`);
+            } else {
+                console.log("Email attribute not found via AdminGetUser.");
+            }
+        } catch (cognitoError: any) {
+            // Log error but continue - we can still use the username/GUID
+            console.error("Error calling AdminGetUser:", cognitoError);
+            // Don't return an error to the user here, just proceed without the email
+        }
+    } else {
+        console.warn("Could not resolve Cognito username from identity object.");
+        // Try sub as last resort? Usually same as username.
+         if (identity?.sub && typeof identity.sub === 'string') {
+            userIdentifier = identity.sub;
+        }
     }
+
     console.log('Resolved User Identifier for email:', userIdentifier);
+    // --- END User Identity Extraction ---
 
     // Construct email body
     const emailSubject = `Payment Request Received`;
-    // Use the resolved identifier in the body
     const emailBody = `A payment request for £${requestedAmount.toFixed(2)} has been submitted by user: ${userIdentifier}.`;
 
     const sendEmailParams = {
@@ -81,18 +115,15 @@ export const handler: AppSyncResolverHandler<RequestPaymentArgs, string | null> 
 
     try {
         console.log(`Attempting to send email from ${FROM_EMAIL} to ${TO_EMAIL}`);
-        // --- Ensure this line is uncommented ---
+        // --- Ensure this line is UNCOMMENTED ---
         await sesClient.send(new SendEmailCommand(sendEmailParams));
         console.log("Email send command issued successfully.");
-// Triggering a new build - April 28
-        // Return success message
-        // Using '!' because the check above guarantees it's a number here
+
         return `Payment request for £${requestedAmount!.toFixed(2)} submitted successfully.`;
 
     } catch (error: any) {
         console.error("Error sending email via SES:", error);
-        // Log the specific SES error if possible
-        const errorMessage = error.message || 'Unknown SES error';
+        const errorMessage = error.message || 'Internal SES Error';
         return `Error: Failed to send email notification (${errorMessage}). Please contact support.`;
     }
 };
