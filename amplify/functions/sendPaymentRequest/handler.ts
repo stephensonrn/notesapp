@@ -15,6 +15,7 @@ interface RequestPaymentArgs {
     }
 }
 
+// Final check deploy
 // Interface for identity object based on logs
 interface AppSyncCognitoIdentity {
     claims?: {
