@@ -15,7 +15,7 @@ export const sendPaymentRequestFunction = defineFunction({
     // --- USER_POOL_ID REMOVED FROM HERE ---
     // It caused a compilation error. Will be set manually in console.
     // --- Keep FROM_EMAIL (ensure it has your REAL verified email) ---
-    FROM_EMAIL: 'your-real-verified-email@example.com',
+    FROM_EMAIL: 'ross@aurumif.com',
   },
   // --- REMOVED allowPolicies block entirely ---
   // It failed previously. Permissions will be set manually in console.
