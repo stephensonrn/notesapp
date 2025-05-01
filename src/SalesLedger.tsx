@@ -2,15 +2,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // Import Amplify data client and generated types/schema
 import { generateClient } from 'aws-amplify/data';
-// Make sure the path to your resource file is correct (e.g., if it's schema.ts not resource.ts)
+// Make sure the path to your resource file is correct
 import type { Schema } from '../amplify/data/resource';
 
-// Import all the necessary sub-components that should exist in separate .tsx files
+// Import all the necessary sub-components
 import CurrentBalance from './CurrentBalance';
-import LedgerEntryForm from './LedgerEntryForm';
+import LedgerEntryForm from './LedgerEntryForm'; // Ensure this version excludes CASH_RECEIPT option
 import LedgerHistory from './LedgerHistory';
 import AvailabilityDisplay from './AvailabilityDisplay';
-// import AccountStatusForm from './AccountStatusForm'; // No longer imported/used
+// AccountStatusForm was removed
 import PaymentRequestForm from './PaymentRequestForm';
 
 // Define the Amplify data client, typed with your Schema
@@ -26,11 +26,11 @@ function SalesLedger() {
   const [currentSalesLedgerBalance, setCurrentSalesLedgerBalance] = useState(0);
   const [isLoadingEntries, setIsLoadingEntries] = useState(true);
 
-  // State for the single AccountStatus record (values fetched from backend)
+  // State for the single AccountStatus record
   const [accountStatus, setAccountStatus] = useState<Schema['AccountStatus'] | null>(null);
-  const [accountStatusId, setAccountStatusId] = useState<string | null>(null); // Kept in case ID is needed elsewhere
+  const [accountStatusId, setAccountStatusId] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
-  // isSavingStatus state removed - no longer needed
+  // isSavingStatus removed
 
   // State for Calculated Availability figures
   const [grossAvailability, setGrossAvailability] = useState(0);
@@ -66,7 +66,7 @@ function SalesLedger() {
     return () => sub.unsubscribe();
   }, []);
 
-  // Effect Hook: Calculate Current Sales Ledger Balance
+  // Effect Hook: Calculate Current Sales Ledger Balance (Includes CASH_RECEIPT)
   useEffect(() => {
     let calculatedBalance = 0;
     entries.forEach(entry => {
@@ -77,13 +77,14 @@ function SalesLedger() {
           break;
         case 'CREDIT_NOTE':
         case 'DECREASE_ADJUSTMENT':
+        case 'CASH_RECEIPT': // <-- CASH_RECEIPT reduces balance
           calculatedBalance -= entry.amount;
           break;
         default: break;
       }
     });
     setCurrentSalesLedgerBalance(parseFloat(calculatedBalance.toFixed(2)));
-  }, [entries]);
+  }, [entries]); // Recalculate when entries change
 
   // Effect Hook: Fetch the user's AccountStatus record
   const fetchAccountStatus = useCallback(async () => {
@@ -128,10 +129,10 @@ function SalesLedger() {
   }, [currentSalesLedgerBalance, accountStatus]);
 
 
-  // --- handleStatusUpdate function was REMOVED ---
+  // handleStatusUpdate function remains REMOVED
 
 
-  // Handler function for adding new ledger entries
+  // Handler function for adding new ledger entries (from user form)
   const handleAddLedgerEntry = async (entryData: { type: string, amount: number, description?: string }) => {
      setError(null);
      try {
@@ -165,43 +166,42 @@ function SalesLedger() {
     console.log('Calling requestPayment mutation via client.graphql with variables:', variables);
 
     try {
-      const result = await client.graphql({
-        query: mutationDoc,
-        variables: variables,
-        authMode: 'userPool'
-      });
-
+      const result = await client.graphql({ query: mutationDoc, variables: variables, authMode: 'userPool' });
       console.log('GraphQL Result:', result);
       const responseMessage = result.data?.requestPayment;
       const errors = result.errors;
-
       if (errors) throw errors[0];
-
-      console.log('Payment request result data:', responseMessage);
       setPaymentRequestSuccess(responseMessage ?? 'Request submitted successfully!');
-
     } catch (err: any) {
-      // Enhanced Logging
+      // Enhanced Logging & Error Message Handling
       console.error("-----------------------------------------");
       console.error("Error object submitting payment request:", err);
       console.error("err.message:", err?.message);
       try { console.error("err.errors:", JSON.stringify(err?.errors)); } catch (e) { /* ignore */ }
       console.error("-----------------------------------------");
-      // Determine message
       let displayError = 'Unknown error during payment request.';
-      if (Array.isArray(err?.errors) && err.errors.length > 0 && err.errors[0].message) {
-          displayError = err.errors[0].message;
-      } else if (err?.message) {
-          displayError = err.message;
-      } else if (typeof err === 'string') {
-          displayError = err;
-      } else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore */ }}
+      if (Array.isArray(err?.errors) && err.errors.length > 0 && err.errors[0].message) { displayError = err.errors[0].message; }
+      else if (err?.message) { displayError = err.message; }
+      else if (typeof err === 'string') { displayError = err; }
+      else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore */ }}
       setPaymentRequestError(`Failed to submit request: ${displayError}`);
       setPaymentRequestSuccess(null);
     } finally {
       setPaymentRequestLoading(false);
     }
   }; // End handlePaymentRequest
+
+
+  // --- Filtering logic moved here, BEFORE the loading check ---
+  const salesLedgerEntries = entries.filter(entry =>
+    entry.type === 'INVOICE' ||
+    entry.type === 'CREDIT_NOTE' ||
+    entry.type === 'INCREASE_ADJUSTMENT' ||
+    entry.type === 'DECREASE_ADJUSTMENT'
+  );
+  const cashEntries = entries.filter(entry =>
+    entry.type === 'CASH_RECEIPT'
+  );
 
 
   // Render Loading state if initial data isn't ready
@@ -238,13 +238,24 @@ function SalesLedger() {
         requestSuccess={paymentRequestSuccess}
       />
 
-      {/* AccountStatusForm component rendering removed */}
+      {/* AccountStatusForm component rendering is removed */}
 
       {/* Render Form for Adding Ledger Entries */}
       <LedgerEntryForm onSubmit={handleAddLedgerEntry} />
 
-      {/* Render Ledger History Table */}
-      <LedgerHistory entries={entries} isLoading={isLoadingEntries} />
+      {/* Render Sales Ledger History */}
+      <div style={{marginTop: '30px'}}>
+        <h3>Sales Ledger Transaction History</h3>
+        {/* Pass filtered sales ledger entries */}
+        <LedgerHistory entries={salesLedgerEntries} isLoading={isLoadingEntries} />
+      </div>
+
+      {/* Render Current Account History */}
+      <div style={{marginTop: '30px'}}>
+        <h3>Current Account Transaction History</h3>
+         {/* Pass filtered cash entries */}
+        <LedgerHistory entries={cashEntries} isLoading={isLoadingEntries} />
+      </div>
 
     </div> // Closing div for main component return
   ); // Closing parenthesis for main component return
