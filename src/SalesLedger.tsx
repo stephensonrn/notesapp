@@ -2,15 +2,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // Import Amplify data client and generated types/schema
 import { generateClient } from 'aws-amplify/data';
-// Make sure the path to your resource file is correct
+// Make sure the path to your resource file is correct (e.g., if it's schema.ts not resource.ts)
 import type { Schema } from '../amplify/data/resource';
 
-// Import all the necessary sub-components
+// Import all the necessary sub-components that should exist in separate .tsx files
 import CurrentBalance from './CurrentBalance';
 import LedgerEntryForm from './LedgerEntryForm'; // Ensure this version excludes CASH_RECEIPT option
 import LedgerHistory from './LedgerHistory';
 import AvailabilityDisplay from './AvailabilityDisplay';
-// AccountStatusForm was removed
+// AccountStatusForm was removed and should not be imported
 import PaymentRequestForm from './PaymentRequestForm';
 
 // Define the Amplify data client, typed with your Schema
@@ -21,12 +21,12 @@ const ADVANCE_RATE = 0.90; // 90%
 
 // Main component definition
 function SalesLedger() {
-  // State for Ledger Entries list
+  // State for Ledger Entries list (includes all types initially)
   const [entries, setEntries] = useState<Schema['LedgerEntry'][]>([]);
   const [currentSalesLedgerBalance, setCurrentSalesLedgerBalance] = useState(0);
   const [isLoadingEntries, setIsLoadingEntries] = useState(true);
 
-  // State for the single AccountStatus record
+  // State for the single AccountStatus record (values fetched from backend)
   const [accountStatus, setAccountStatus] = useState<Schema['AccountStatus'] | null>(null);
   const [accountStatusId, setAccountStatusId] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
@@ -63,8 +63,12 @@ function SalesLedger() {
         setIsLoadingEntries(false);
       },
     });
-    return () => sub.unsubscribe();
-  }, []);
+    // Cleanup subscription on component unmount
+    return () => {
+        console.log("Cleaning up LedgerEntry subscription.");
+        sub.unsubscribe();
+    }
+  }, []); // Empty dependency array means run once on mount
 
   // Effect Hook: Calculate Current Sales Ledger Balance (Includes CASH_RECEIPT)
   useEffect(() => {
@@ -86,37 +90,43 @@ function SalesLedger() {
     setCurrentSalesLedgerBalance(parseFloat(calculatedBalance.toFixed(2)));
   }, [entries]); // Recalculate when entries change
 
-  // Effect Hook: Fetch the user's AccountStatus record
-  const fetchAccountStatus = useCallback(async () => {
+  // Effect Hook: Fetch Account Status (real-time subscription)
+  useEffect(() => {
     setIsLoadingStatus(true);
     setError(null);
-    try {
-      const { data: statusItems, errors } = await client.models.AccountStatus.list({
-          authMode: 'userPool'
-      });
-      if (errors) throw errors;
-      if (statusItems.length > 0) {
-        setAccountStatus(statusItems[0]);
-        setAccountStatusId(statusItems[0].id);
-      } else {
+    console.log("Setting up AccountStatus subscription...");
+
+    const sub = client.models.AccountStatus.observeQuery({
+      authMode: 'userPool'
+    }).subscribe({
+      next: ({ items, isSynced }) => {
+        console.log(`[ObserveQuery AccountStatus] Update Received (isSynced: ${isSynced}):`, JSON.stringify(items, null, 2));
+        if (items.length > 0) {
+          setAccountStatus(items[0]);
+          setAccountStatusId(items[0].id);
+        } else {
+          setAccountStatus(null);
+          setAccountStatusId(null);
+        }
+        setIsLoadingStatus(!isSynced);
+      },
+      error: (err: any) => {
+        console.error("[ObserveQuery AccountStatus] Subscription Error:", err);
+        setError(`Failed to load/observe account status: ${err.message || JSON.stringify(err)}`);
+        setIsLoadingStatus(false);
         setAccountStatus(null);
         setAccountStatusId(null);
       }
-    } catch (err: any) {
-        console.error("Error fetching account status:", err);
-        const errorMsg = Array.isArray(err?.errors) ? err.errors[0].message : (err?.message || 'Unknown error');
-        setError(`Failed to load account status: ${errorMsg}`);
-        setAccountStatus(null);
-        setAccountStatusId(null);
-    } finally {
-        setIsLoadingStatus(false);
+    });
+
+    console.log("AccountStatus subscription established.");
+
+    // Cleanup subscription
+    return () => {
+      console.log("Cleaning up AccountStatus subscription.");
+      sub.unsubscribe();
     }
-  }, []);
-
-  useEffect(() => {
-    fetchAccountStatus();
-  }, [fetchAccountStatus]);
-
+  }, []); // Empty dependency array
 
   // Effect Hook: Calculate Availability
   useEffect(() => {
@@ -126,10 +136,10 @@ function SalesLedger() {
     const netAvail = grossAvail - currentBalance;
     setGrossAvailability(Math.max(0, parseFloat(grossAvail.toFixed(2))));
     setNetAvailability(Math.max(0, parseFloat(netAvail.toFixed(2))));
-  }, [currentSalesLedgerBalance, accountStatus]);
+  }, [currentSalesLedgerBalance, accountStatus]); // Recalculate when dependencies change
 
 
-  // handleStatusUpdate function remains REMOVED
+  // --- handleStatusUpdate function remains REMOVED ---
 
 
   // Handler function for adding new ledger entries (from user form)
@@ -137,12 +147,13 @@ function SalesLedger() {
      setError(null);
      try {
        const { errors, data: newEntry } = await client.models.LedgerEntry.create({
-         type: entryData.type,
+         type: entryData.type, // Type comes from the form's allowed values
          amount: entryData.amount,
          description: entryData.description || null,
        }, { authMode: 'userPool' });
        if (errors) throw errors;
        console.log("Ledger Entry created:", newEntry);
+       // State updates via observeQuery
      } catch (err: any) {
        console.error("Error creating ledger entry:", err);
        const errorMsg = Array.isArray(err?.errors) ? err.errors[0].message : (err?.message || 'Unknown error');
@@ -156,43 +167,54 @@ function SalesLedger() {
     setPaymentRequestError(null);
     setPaymentRequestSuccess(null);
 
+    // GraphQL mutation document
     const mutationDoc = /* GraphQL */ `
       mutation SendPaymentRequest($input: PaymentRequestInput!) {
         requestPayment(input: $input)
       }
     `;
+    // Variables for the mutation
     const variables = { input: { amount: amount } };
 
     console.log('Calling requestPayment mutation via client.graphql with variables:', variables);
 
     try {
-      const result = await client.graphql({ query: mutationDoc, variables: variables, authMode: 'userPool' });
+      // Execute the mutation
+      const result = await client.graphql({
+        query: mutationDoc,
+        variables: variables,
+        authMode: 'userPool'
+      });
+
       console.log('GraphQL Result:', result);
-      const responseMessage = result.data?.requestPayment;
+      const responseMessage = result.data?.requestPayment; // Extract result
       const errors = result.errors;
-      if (errors) throw errors[0];
+
+      if (errors) throw errors[0]; // Throw first error if present
+
       setPaymentRequestSuccess(responseMessage ?? 'Request submitted successfully!');
+
     } catch (err: any) {
-      // Enhanced Logging & Error Message Handling
+      // Enhanced error logging and state update
       console.error("-----------------------------------------");
       console.error("Error object submitting payment request:", err);
       console.error("err.message:", err?.message);
-      try { console.error("err.errors:", JSON.stringify(err?.errors)); } catch (e) { /* ignore */ }
+      try { console.error("err.errors:", JSON.stringify(err?.errors)); } catch (e) { /* ignore stringify errors */ }
       console.error("-----------------------------------------");
       let displayError = 'Unknown error during payment request.';
       if (Array.isArray(err?.errors) && err.errors.length > 0 && err.errors[0].message) { displayError = err.errors[0].message; }
       else if (err?.message) { displayError = err.message; }
       else if (typeof err === 'string') { displayError = err; }
-      else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore */ }}
+      else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore stringify errors */ }}
       setPaymentRequestError(`Failed to submit request: ${displayError}`);
       setPaymentRequestSuccess(null);
     } finally {
-      setPaymentRequestLoading(false);
+      setPaymentRequestLoading(false); // Ensure loading state is always turned off
     }
   }; // End handlePaymentRequest
 
 
-  // --- Filtering logic moved here, BEFORE the loading check ---
+  // --- Filtering logic for display, executed on every render ---
   const salesLedgerEntries = entries.filter(entry =>
     entry.type === 'INVOICE' ||
     entry.type === 'CREDIT_NOTE' ||
@@ -204,13 +226,13 @@ function SalesLedger() {
   );
 
 
-  // Render Loading state if initial data isn't ready
+  // Render Loading state check (placed after filtering, before main return)
   if (isLoadingEntries || isLoadingStatus) {
       return <p>Loading application data...</p>;
   }
 
 
-  // Main Render Output
+  // --- Main Render Output ---
   return (
     <div style={{ padding: '20px' }}>
       <h2>Sales Ledger</h2>
