@@ -7,7 +7,25 @@ const sesClient = new SESClient({});
 const cognitoClient = new CognitoIdentityProviderClient({});
 
 interface RequestPaymentArgs { input?: { amount: number; }; amount?: number; } // Keep arg definition
-interface AppSyncCognitoIdentity { /* ... as before ... */ } // Keep identity definition
+// Interface for identity object based on logs
+interface AppSyncCognitoIdentity {
+    claims?: {
+        sub?: string;
+        email?: string;
+        "cognito:username"?: string;
+        [key: string]: any; // Allows other claims we might not know about
+    };
+    // --- Ensure these top-level optional properties are present ---
+    sub?: string;
+    username?: string;
+    // --- You might also see these based on logs ---
+    issuer?: string;
+    sourceIp?: string[];
+    defaultAuthStrategy?: string;
+    groups?: string[] | null;
+    // --- Allow any other properties ---
+    [key: string]: any;
+}
 
 export const handler: AppSyncResolverHandler<RequestPaymentArgs, string | null> = async (event) => {
     const FROM_EMAIL = process.env.FROM_EMAIL;
