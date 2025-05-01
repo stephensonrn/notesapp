@@ -1,33 +1,25 @@
 // Filename: amplify/backend.ts
-
 import { defineBackend } from '@aws-amplify/backend';
 import { defineFunction } from '@aws-amplify/backend-function';
 import { auth } from './auth/resource';
-import { data } from './data/resource'; // Assumes this ONLY defines models now
+import { data } from './data/resource'; // Imports the models-only definition
 import * as path from 'path';
-// No IAM/CDK imports needed here now
 
-// 1. Define the Lambda Function Resource (MINIMAL definition)
+// 1. Define the Lambda Function Resource (MINIMAL)
 export const sendPaymentRequestFunction = defineFunction({
-  // Removed name
+  // name: 'sendPaymentRequestFn', // Name might be optional, removing temporarily
   entry: path.join('functions', 'sendPaymentRequest', 'handler.ts'),
   environment: {
-    // --- USER_POOL_ID REMOVED FROM HERE ---
-    // It caused a compilation error. Will be set manually in console.
-    // --- Keep FROM_EMAIL (ensure it has your REAL verified email) ---
+    // --- CRITICAL: Make sure this is your REAL verified email ---
     FROM_EMAIL: 'ross@aurumif.com',
+    // USER_POOL_ID will need to be set manually in Lambda Console
   },
-  // --- REMOVED allowPolicies block entirely ---
-  // It failed previously. Permissions will be set manually in console.
+  // No permissions defined here - MUST be done manually
 });
 
 // 2. Define and Export the Backend
 export const backend = defineBackend({
   auth,
   data, // Provides the API for data models only
-  sendPaymentRequestFunction, // Defines the function resource itself
+  sendPaymentRequestFunction, // Defines the function resource
 });
-
-// NOTE: Permissions (SES + Cognito) and the specific User Pool ID env var
-// for the function MUST be configured manually in the AWS Console after deployment.
-// The API trigger (AppSync Resolver) also needs manual configuration.
