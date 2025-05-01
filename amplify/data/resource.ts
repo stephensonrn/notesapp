@@ -1,37 +1,55 @@
 // Filename: amplify/data/resource.ts
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 
-// --- MODIFIED Enum: Add CASH_RECEIPT ---
+// Original Enum for Sales Ledger items
 const LedgerEntryType = a.enum([
   'INVOICE',
   'CREDIT_NOTE',
   'INCREASE_ADJUSTMENT',
   'DECREASE_ADJUSTMENT',
-  'CASH_RECEIPT' // Added new type
+  // CASH_RECEIPT REMOVED
 ]);
-// --- END MODIFICATION ---
 
-// Schema ONLY defines models
+// --- NEW Enum for Current Account transactions ---
+const CurrentAccountTransactionType = a.enum([
+    'PAYMENT_REQUEST', // Represents funds drawn down / paid out
+    'CASH_RECEIPT'     // Represents funds paid back / cash received
+]);
+
+// Define the schema
 const schema = a.schema({
-  // LedgerEntry model - no changes needed here
+  // LedgerEntry model - reverted to original scope
   LedgerEntry: a
     .model({
-      type: LedgerEntryType, // Uses the updated enum
+      type: LedgerEntryType.required(), // Use required() if appropriate
       amount: a.float().required(),
       description: a.string(),
+      // owner, id, createdAt, updatedAt added by @model/@auth
     })
     .authorization((allow) => [allow.owner()]),
 
-  // AccountStatus model - no changes needed here
+  // AccountStatus model - ONLY manual unapproved value now
   AccountStatus: a
     .model({
       totalUnapprovedInvoiceValue: a.float().required().default(0),
-      currentAccountBalance: a.float().required().default(0),
+      // currentAccountBalance REMOVED - will be calculated from transactions
+      // owner, id, createdAt, updatedAt added by @model/@auth
     })
     .authorization((allow) => [ allow.owner() ]),
-});
 
-// Define data - no changes needed here
+  // --- NEW Model for Current Account Transactions ---
+  CurrentAccountTransaction: a
+    .model({
+        type: CurrentAccountTransactionType.required(), // PAYMENT_REQUEST or CASH_RECEIPT
+        amount: a.float().required(),                // Always positive value of transaction
+        description: a.string(),                     // Optional description
+        // owner, id, createdAt, updatedAt added by @model/@auth
+    })
+    .authorization((allow) => [ allow.owner() ]), // User owns their transactions
+
+}); // End of a.schema({})
+
+// Define data resource
 export const data = defineData({
   schema,
   authorizationModes: { defaultAuthorizationMode: 'userPool' },
