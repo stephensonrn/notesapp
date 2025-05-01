@@ -2,24 +2,41 @@
 import { defineBackend } from '@aws-amplify/backend';
 import { defineFunction } from '@aws-amplify/backend-function';
 import { auth } from './auth/resource';
-import { data } from './data/resource'; // Imports the models-only definition
+import { data } from './data/resource'; // Includes CurrentAccountTransaction model now
 import * as path from 'path';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 
-// 1. Define the Lambda Function Resource (MINIMAL)
+// Define the Lambda Function Resource
 export const sendPaymentRequestFunction = defineFunction({
-  // name: 'sendPaymentRequestFn', // Name might be optional, removing temporarily
+  name: 'sendPaymentRequestFn', // Use the name referenced by AppSync resolver (if set manually)
   entry: path.join('functions', 'sendPaymentRequest', 'handler.ts'),
   environment: {
-    // --- CRITICAL: Make sure this is your REAL verified email ---
-    FROM_EMAIL: 'ross@aurumif.com',
-    // USER_POOL_ID will need to be set manually in Lambda Console
+    // --- CRITICAL: Replace with your verified SES email ---
+    FROM_EMAIL: 'your-real-verified-email@example.com',
+    // --- Attempt to reference User Pool ID (might fail compile) ---
+    USER_POOL_ID: auth.resources.userPool.userPoolId,
+    // --- Attempt to reference Table Name (might fail compile) ---
+    CURRENT_ACCT_TABLE_NAME: data.resources.tables.CurrentAccountTransaction.tableName,
   },
-  // No permissions defined here - MUST be done manually
+  // --- Attempt to add ALL required permissions ---
+  // This block might fail compilation - remove if it does and add manually
+  allowPolicies: (grant) => [
+      grant.createAwsSdkCalls({ actions: ["ses:SendEmail"], resources: ["*"] }),
+      grant.createAwsSdkCalls({
+          actions: ["cognito-idp:AdminGetUser"],
+          resources: [auth.resources.userPool.userPoolArn], // Use ARN output
+      }),
+      // Add DynamoDB PutItem Permission for the transaction table
+      grant.createAwsSdkCalls({
+          actions: ["dynamodb:PutItem"],
+          resources: [data.resources.tables.CurrentAccountTransaction.tableArn], // Use Table ARN
+      })
+  ],
 });
 
-// 2. Define and Export the Backend
+// Define and Export the Backend
 export const backend = defineBackend({
   auth,
-  data, // Provides the API for data models only
-  sendPaymentRequestFunction, // Defines the function resource
+  data, // Includes schema for all models
+  sendPaymentRequestFunction, // Include function definition itself
 });
