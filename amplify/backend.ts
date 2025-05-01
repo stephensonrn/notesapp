@@ -1,42 +1,32 @@
 // Filename: amplify/backend.ts
-import { defineBackend } from '@aws-amplify/backend';
-import { defineFunction } from '@aws-amplify/backend-function';
-import { auth } from './auth/resource';
-import { data } from './data/resource'; // Includes CurrentAccountTransaction model now
-import * as path from 'path';
-import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 
-// Define the Lambda Function Resource
+import { defineBackend } from '@aws-amplify/backend';
+import { defineFunction } from '@aws-amplify/backend-function'; // Keep this import
+
+import { auth } from './auth/resource'; // Your auth resource
+// Import data resource which ONLY defines models now (ensure data/resource.ts is updated as per Response #142)
+import { data } from './data/resource';
+import * as path from 'path';
+
+// 1. Define the Lambda Function Resource (MINIMAL definition)
+// Exporting allows potential future referencing if syntax is figured out
 export const sendPaymentRequestFunction = defineFunction({
-  name: 'sendPaymentRequestFn', // Use the name referenced by AppSync resolver (if set manually)
+  // No name, no environment vars (besides FROM_EMAIL), no permissions defined here
   entry: path.join('functions', 'sendPaymentRequest', 'handler.ts'),
   environment: {
-    // --- CRITICAL: Replace with your verified SES email ---
+    // --- CRITICAL: Use your REAL verified email here ---
     FROM_EMAIL: 'your-real-verified-email@example.com',
-    // --- Attempt to reference User Pool ID (might fail compile) ---
-    USER_POOL_ID: auth.resources.userPool.userPoolId,
-    // --- Attempt to reference Table Name (might fail compile) ---
-    CURRENT_ACCT_TABLE_NAME: data.resources.tables.CurrentAccountTransaction.tableName,
+    // USER_POOL_ID and CURRENT_ACCT_TABLE_NAME MUST be set manually in Lambda console
   },
-  // --- Attempt to add ALL required permissions ---
-  // This block might fail compilation - remove if it does and add manually
-  allowPolicies: (grant) => [
-      grant.createAwsSdkCalls({ actions: ["ses:SendEmail"], resources: ["*"] }),
-      grant.createAwsSdkCalls({
-          actions: ["cognito-idp:AdminGetUser"],
-          resources: [auth.resources.userPool.userPoolArn], // Use ARN output
-      }),
-      // Add DynamoDB PutItem Permission for the transaction table
-      grant.createAwsSdkCalls({
-          actions: ["dynamodb:PutItem"],
-          resources: [data.resources.tables.CurrentAccountTransaction.tableArn], // Use Table ARN
-      })
-  ],
 });
 
-// Define and Export the Backend
+// 2. Define and Export the Backend - constituent resources ONLY
 export const backend = defineBackend({
   auth,
-  data, // Includes schema for all models
-  sendPaymentRequestFunction, // Include function definition itself
+  data, // Provides the API for data models only
+  sendPaymentRequestFunction, // Defines the function resource itself
 });
+
+// NOTE: ALL Permissions (SES, Cognito, DynamoDB) for the Lambda function
+// AND the USER_POOL_ID / CURRENT_ACCT_TABLE_NAME environment variables
+// AND the AppSync Resolver link MUST be configured manually in AWS Console.
