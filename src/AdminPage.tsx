@@ -2,7 +2,7 @@
 import React from 'react';
 import ManageAccountStatus from './ManageAccountStatus';
 import AddCashReceiptForm from './AddCashReceiptForm'; // Import the new form
-import { Flex } from '@aws-amplify/ui-react'; // Optional layout
+import { Flex, Heading, Text } from '@aws-amplify/ui-react'; // Add Heading and Text here
 
 function AdminPage() {
   return (
