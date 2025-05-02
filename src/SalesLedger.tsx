@@ -1,4 +1,7 @@
 // src/SalesLedger.tsx
+// Final Working Version (incorporates real-time updates for all data,
+// separate histories, calculated current account balance, removes status form)
+
 import React, { useState, useEffect, useCallback } from 'react';
 // Import Amplify data client and generated types/schema
 import { generateClient } from 'aws-amplify/data';
@@ -8,7 +11,7 @@ import type { Schema } from '../amplify/data/resource';
 // Import all the necessary sub-components
 import CurrentBalance from './CurrentBalance';
 import LedgerEntryForm from './LedgerEntryForm';
-import LedgerHistory from './LedgerHistory';
+import LedgerHistory from './LedgerHistory'; // Ensure this handles historyType prop
 import AvailabilityDisplay from './AvailabilityDisplay';
 import PaymentRequestForm from './PaymentRequestForm';
 
@@ -27,10 +30,10 @@ function SalesLedger() {
 
   // State: Account Status (Manual Unapproved Value)
   const [accountStatus, setAccountStatus] = useState<Schema['AccountStatus'] | null>(null);
-  const [accountStatusId, setAccountStatusId] = useState<string | null>(null);
+  // const [accountStatusId, setAccountStatusId] = useState<string | null>(null); // ID not actively used in this component anymore
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
-  // State: Current Account Transactions
+  // State: Current Account Transactions & Calculated Balance
   const [currentAccountTransactions, setCurrentAccountTransactions] = useState<Schema['CurrentAccountTransaction'][]>([]);
   const [isLoadingAcctTransactions, setIsLoadingAcctTransactions] = useState(true);
   const [calculatedCurrentAccountBalance, setCalculatedCurrentAccountBalance] = useState(0);
@@ -38,10 +41,9 @@ function SalesLedger() {
   // State: Calculated Availability figures
   const [grossAvailability, setGrossAvailability] = useState(0);
   const [netAvailability, setNetAvailability] = useState(0);
-  // --- NEW Temporary state for refactored availability calculation ---
+  // Temporary state for refactored availability calculation
   const [grossAvailTemp, setGrossAvailTemp] = useState(0);
   const [netAvailTemp, setNetAvailTemp] = useState(0);
-  // --- END NEW ---
 
   // State: Payment Request Process
   const [paymentRequestLoading, setPaymentRequestLoading] = useState(false);
@@ -62,7 +64,7 @@ function SalesLedger() {
         setEntries(sortedItems);
         setIsLoadingEntries(!isSynced);
       },
-      error: (err: any) => { console.error("Error fetching ledger entries:", err); setError(`Ledger history error: ${err.message || JSON.stringify(err)}`); setIsLoadingEntries(false); }
+      error: (err: any) => { console.error("Error observing ledger entries:", err); setError(`Ledger history error: ${err.message || JSON.stringify(err)}`); setIsLoadingEntries(false); }
     });
     return () => { console.log("Cleaning LedgerEntry subscription."); sub.unsubscribe(); }
   }, []);
@@ -73,11 +75,11 @@ function SalesLedger() {
     const sub = client.models.AccountStatus.observeQuery({ authMode: 'userPool' }).subscribe({
       next: ({ items, isSynced }) => {
         console.log(`[ObserveQuery AccountStatus] Update Received (isSynced: ${isSynced}):`, JSON.stringify(items, null, 2));
-        if (items.length > 0) { setAccountStatus(items[0]); setAccountStatusId(items[0].id); }
-        else { setAccountStatus(null); setAccountStatusId(null); }
+        if (items.length > 0) { setAccountStatus(items[0]); /* setAccountStatusId(items[0].id); */ } // ID not strictly needed here anymore
+        else { setAccountStatus(null); /* setAccountStatusId(null); */ }
         setIsLoadingStatus(!isSynced);
       },
-      error: (err: any) => { console.error("[ObserveQuery AccountStatus] Subscription Error:", err); setError(`Account status error: ${err.message || JSON.stringify(err)}`); setIsLoadingStatus(false); setAccountStatus(null); setAccountStatusId(null); }
+      error: (err: any) => { console.error("[ObserveQuery AccountStatus] Subscription Error:", err); setError(`Account status error: ${err.message || JSON.stringify(err)}`); setIsLoadingStatus(false); setAccountStatus(null); /* setAccountStatusId(null); */ }
     });
     console.log("AccountStatus subscription established.");
     return () => { console.log("Cleaning up AccountStatus subscription."); sub.unsubscribe(); }
@@ -102,7 +104,7 @@ function SalesLedger() {
 
   // --- Effect Hooks for Calculations ---
 
-  // Calculate Sales Ledger Balance
+  // Calculate Sales Ledger Balance (Based only on LedgerEntry)
   useEffect(() => {
     let calculatedSLBalance = 0;
     entries.forEach(entry => {
@@ -115,13 +117,13 @@ function SalesLedger() {
     setCurrentSalesLedgerBalance(parseFloat(calculatedSLBalance.toFixed(2)));
   }, [entries]);
 
-  // Calculate Current Account Balance
+  // Calculate Current Account Balance (Based on CurrentAccountTransaction)
   useEffect(() => {
     let calculatedAccBalance = 0;
     currentAccountTransactions.forEach(transaction => {
         switch (transaction.type) {
-            case 'PAYMENT_REQUEST': calculatedAccBalance += transaction.amount; break;
-            case 'CASH_RECEIPT': calculatedAccBalance -= transaction.amount; break;
+            case 'PAYMENT_REQUEST': calculatedAccBalance += transaction.amount; break; // Payment requests INCREASE amount drawn
+            case 'CASH_RECEIPT': calculatedAccBalance -= transaction.amount; break; // Cash receipts DECREASE amount drawn
             default: break;
         }
     });
@@ -130,7 +132,7 @@ function SalesLedger() {
   }, [currentAccountTransactions]);
 
 
-  // --- REFACTORED Availability Calculation ---
+  // Refactored Availability Calculation Effects
 
   // Effect 1: Calculate intermediate values based on inputs
   useEffect(() => {
@@ -138,41 +140,38 @@ function SalesLedger() {
     const currentAccountBalance = calculatedCurrentAccountBalance; // Use calculated value
     const grossAvail = (currentSalesLedgerBalance - unapprovedValue) * ADVANCE_RATE;
     const netAvail = grossAvail - currentAccountBalance;
+    setGrossAvailTemp(grossAvail); // Set temporary state
+    setNetAvailTemp(netAvail);     // Set temporary state
+    console.log("Intermediate availability calculated");
+  }, [currentSalesLedgerBalance, accountStatus, calculatedCurrentAccountBalance]);
 
-    // Set temporary state variables
-    setGrossAvailTemp(grossAvail);
-    setNetAvailTemp(netAvail);
-    console.log("Intermediate availability calculated:", { grossAvail, netAvail });
-
-  }, [currentSalesLedgerBalance, accountStatus, calculatedCurrentAccountBalance]); // Original dependencies
-
-  // Effect 2: Update final Gross Availability state when intermediate value changes
+  // Effect 2: Update final Gross Availability state
   useEffect(() => {
       console.log("Setting Gross Availability based on temp value:", grossAvailTemp);
       setGrossAvailability(Math.max(0, parseFloat(grossAvailTemp.toFixed(2))));
-  }, [grossAvailTemp]); // Only depends on the intermediate value
+  }, [grossAvailTemp]);
 
-  // Effect 3: Update final Net Availability state when intermediate value changes
+  // Effect 3: Update final Net Availability state
   useEffect(() => {
       console.log("Setting Net Availability based on temp value:", netAvailTemp);
       setNetAvailability(Math.max(0, parseFloat(netAvailTemp.toFixed(2))));
-  }, [netAvailTemp]); // Only depends on the intermediate value
-
-  // --- END REFACTORED Availability Calculation ---
+  }, [netAvailTemp]);
 
 
   // --- Handler Functions ---
 
-  // Add Ledger Entry
+  // Add Ledger Entry (Invoices, CNs, Adjustments from user form)
   const handleAddLedgerEntry = async (entryData: { type: string, amount: number, description?: string }) => {
      setError(null);
      try {
-       const { errors } = await client.models.LedgerEntry.create({ /* ... */ }, { authMode: 'userPool' });
+       const { errors } = await client.models.LedgerEntry.create({
+         type: entryData.type, amount: entryData.amount, description: entryData.description || null
+       }, { authMode: 'userPool' });
        if (errors) throw errors;
      } catch (err: any) { setError(`Failed to save transaction: ${err.message || 'Unknown error'}`); }
    };
 
-  // Payment Request
+  // Payment Request (sends email, triggers Lambda to create CurrentAccountTransaction record)
   const handlePaymentRequest = async (amount: number) => {
     setPaymentRequestLoading(true); setPaymentRequestError(null); setPaymentRequestSuccess(null);
     const mutationDoc = /* GraphQL */ ` mutation SendPaymentRequest($input: PaymentRequestInput!) { requestPayment(input: $input) } `;
@@ -198,11 +197,11 @@ function SalesLedger() {
 
   // --- Filtering logic for Sales Ledger History ---
   const salesLedgerEntries = entries.filter(entry =>
-    entry.type !== 'CASH_RECEIPT' // Just ensure no cash receipts are shown here
+    entry.type !== 'CASH_RECEIPT' // Ensure only correct types show here
   );
 
 
-  // --- Loading State Check ---
+  // --- Loading State Check (includes all data sources) ---
   if (isLoadingEntries || isLoadingStatus || isLoadingAcctTransactions) {
       return <p>Loading application data...</p>;
   }
@@ -214,16 +213,17 @@ function SalesLedger() {
       <h2>Sales Ledger</h2>
       {error && <p style={{ color: 'red', border: '1px solid red', padding: '10px' }}>Error: {error}</p>}
 
+      {/* Display Balances and Availability */}
       <CurrentBalance balance={currentSalesLedgerBalance} />
-
       <AvailabilityDisplay
-        grossAvailability={grossAvailability} // Final calculated state
-        netAvailability={netAvailability}     // Final calculated state
+        grossAvailability={grossAvailability}
+        netAvailability={netAvailability}
         currentSalesLedgerBalance={currentSalesLedgerBalance}
         totalUnapprovedInvoiceValue={accountStatus?.totalUnapprovedInvoiceValue ?? 0}
-        currentAccountBalance={calculatedCurrentAccountBalance} // Use calculated value
+        currentAccountBalance={calculatedCurrentAccountBalance} // Use calculated balance
       />
 
+      {/* Display Payment Request Form */}
       <PaymentRequestForm
         netAvailability={netAvailability}
         onSubmitRequest={handlePaymentRequest}
@@ -234,24 +234,28 @@ function SalesLedger() {
 
       {/* AccountStatusForm removed */}
 
+      {/* Ledger Entry Form (for Sales Ledger items) */}
       <LedgerEntryForm onSubmit={handleAddLedgerEntry} />
 
-      {/* Sales Ledger History */}
+      {/* Sales Ledger History Section */}
       <div style={{marginTop: '30px'}}>
         <h3>Sales Ledger Transaction History</h3>
+        {/* Pass filtered sales ledger entries */}
         <LedgerHistory entries={salesLedgerEntries} historyType="sales" isLoading={isLoadingEntries} />
       </div>
 
-      {/* Current Account History */}
+      {/* Current Account History Section */}
       <div style={{marginTop: '30px'}}>
         <h3>Current Account Transaction History</h3>
+         {/* Pass the fetched currentAccountTransactions state directly */}
+         {/* Ensure LedgerHistory component is updated to handle historyType="account" */}
         <LedgerHistory entries={currentAccountTransactions} historyType="account" isLoading={isLoadingAcctTransactions} />
       </div>
 
-    </div>
-  );
+    </div> // Closing div for main component return
+  ); // Closing parenthesis for main component return
 
-} // End SalesLedger Component
+} // Closing brace for SalesLedger function component
 
-// Default export
+// Default export needed for import in App.tsx
 export default SalesLedger;
