@@ -2,8 +2,24 @@
 import React, { useState } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource'; // Adjust path if needed
+import { Button, Flex, TextField, Text, View, Heading } from '@aws-amplify/ui-react';
 
-const client = generateClient<Schema>();
+// Define the GraphQL mutation string MANUALLY
+// Note: We need to explicitly ask for fields to get them back in the response
+const adminAddCashReceiptMutation = /* GraphQL */ `
+  mutation AdminAddCashReceipt($input: AdminAddCashReceiptInput!) {
+    adminAddCashReceipt(input: $input) {
+      id
+      owner
+      type
+      amount
+      description
+      createdAt
+    }
+  }
+`;
+
+const client = generateClient<Schema>(); // Still useful for types
 
 function AddCashReceiptForm() {
   const [ownerIdInput, setOwnerIdInput] = useState('');
@@ -30,23 +46,32 @@ function AddCashReceiptForm() {
     setError(null);
     setSuccess(null);
 
+    // Prepare variables for the custom mutation
+    const variables = {
+        input: {
+            targetOwnerId: ownerIdInput,
+            amount: numericAmount,
+            description: description || null
+        }
+    };
+
     try {
-      // Admin group has create permission from auth rules
-      // We pass the owner explicitly here. Ensure auth rule allows this.
-      // If owner rule was { allow: owner, operations: [create] }, this might fail
-      // unless admin implicitly owns it? Test needed. Assuming admin create rule works.
-      const { data: newTransaction, errors } = await client.models.CurrentAccountTransaction.create(
-        {
-          type: 'CASH_RECEIPT', // Set type specifically
-          amount: numericAmount,
-          description: description || null,
-        },
-        { authMode: 'userPool' } // Admin should be authenticated
-      );
+      console.log("Calling adminAddCashReceipt mutation with variables:", variables);
+      // Use client.graphql to call the custom mutation
+      const result = await client.graphql({
+        query: adminAddCashReceiptMutation,
+        variables: variables,
+        authMode: 'userPool' // Run as the authenticated admin user
+      });
 
-      if (errors) throw errors;
+      console.log("Admin Add Cash Receipt Result:", result);
+      const newTransaction = result.data?.adminAddCashReceipt; // Access result via mutation name
+      const errors = result.errors;
 
-      setSuccess(`Cash Receipt of ${numericAmount.toFixed(2)} added for owner ${ownerIdInput}. ID: ${newTransaction.id}`);
+      if (errors) throw errors; // Throw if GraphQL layer returns errors
+      if (!newTransaction) throw new Error("Mutation did not return transaction data.");
+
+      setSuccess(`Cash Receipt of £${numericAmount.toFixed(2)} added for owner ${ownerIdInput}. ID: ${newTransaction.id}`);
       // Clear form
       setOwnerIdInput('');
       setAmount('');
@@ -54,58 +79,55 @@ function AddCashReceiptForm() {
 
     } catch (err: any) {
       console.error("Error creating cash receipt:", err);
-      const errorMsg = Array.isArray(err?.errors) ? err.errors[0].message : (err?.message || 'Unknown error');
-      setError(`Failed to add cash receipt: ${errorMsg}`);
+      // Handle potential errors array from GraphQL or general JS errors
+       let displayError = 'Unknown error.';
+       if (Array.isArray(err?.errors) && err.errors.length > 0 && err.errors[0].message) { displayError = err.errors[0].message;}
+       else if (err?.message) { displayError = err.message;}
+       else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore */ }}
+       setError(`Failed to add cash receipt: ${displayError}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h4>Add Cash Receipt Transaction</h4>
-      <div>
-        <label htmlFor="cash-ownerId">Target User ID (Owner GUID): </label>
-        <input
-          type="text"
-          id="cash-ownerId"
+    <View as="form" onSubmit={handleSubmit} padding="medium" border="1px solid var(--amplify-colors-border-secondary)" borderRadius="medium">
+      <Heading level={4}>Add Cash Receipt Transaction</Heading>
+      <Flex direction="column" gap="small">
+        <TextField
+          label="Target User ID (Owner GUID):"
+          id="cash-ownerId" // Use htmlFor if label is separate component
           value={ownerIdInput}
           onChange={(e) => setOwnerIdInput(e.target.value)}
           placeholder="Enter Cognito User GUID"
-          style={{width: '300px'}}
-          required
-          disabled={isLoading}
+          isRequired={true}
+          isDisabled={isLoading}
         />
-       </div>
-      <div style={{marginTop: '10px'}}>
-        <label htmlFor="cash-amount">Amount Received:</label>
-        <input
-          id="cash-amount"
+       <TextField
+          label="Amount Received:"
+          id="cash-amount" // Use htmlFor if label is separate component
           type="number"
           step="0.01"
           min="0.01"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          required
-          disabled={isLoading}
+          isRequired={true}
+          isDisabled={isLoading}
         />
-      </div>
-      <div style={{marginTop: '10px'}}>
-        <label htmlFor="cash-description">Description (Optional):</label>
-        <input
-          id="cash-description"
-          type="text"
+        <TextField
+          label="Description (Optional):"
+          id="cash-description" // Use htmlFor if label is separate component
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          disabled={isLoading}
+          isDisabled={isLoading}
         />
-      </div>
-      <button type="submit" disabled={isLoading} style={{marginTop: '10px'}}>
-        {isLoading ? 'Adding...' : 'Add Cash Receipt (- Balance)'}
-      </button>
-      {success && <p style={{ color: 'green' }}>{success}</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-    </form>
+        <Button type="submit" variation="primary" isLoading={isLoading} isDisabled={isLoading}>
+          Add Cash Receipt (- Balance)
+        </Button>
+        {success && <Text color="success">{success}</Text>}
+        {error && <Text color="error">{error}</Text>}
+       </Flex>
+    </View>
   );
 }
 

@@ -1,47 +1,50 @@
 // Filename: amplify/data/resource.ts
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 
-// Enums remain the same
+// Enums
 const LedgerEntryType = a.enum([ 'INVOICE', 'CREDIT_NOTE', 'INCREASE_ADJUSTMENT', 'DECREASE_ADJUSTMENT' ]);
 const CurrentAccountTransactionType = a.enum([ 'PAYMENT_REQUEST', 'CASH_RECEIPT' ]);
 
+// Main Schema Definition
 const schema = a.schema({
-  // LedgerEntry - No auth change needed unless admins need access
-  LedgerEntry: a
-    .model({
+  // --- NEW: Custom Input Type for Admin Mutation ---
+  AdminAddCashReceiptInput: a.customType({
+      targetOwnerId: a.string().required(), // ID of the user this cash receipt belongs to
+      amount: a.float().required(),
+      description: a.string()
+  }),
+
+  // LedgerEntry Model (Unchanged)
+  LedgerEntry: a.model({
       type: LedgerEntryType,
       amount: a.float().required(),
       description: a.string(),
-    })
-    .authorization((allow) => [
-        allow.owner() // Only owner can manage these by default
-    ]),
+    }).authorization((allow) => [allow.owner()]),
 
-  // AccountStatus - Grant Admin read/update access
-  AccountStatus: a
-    .model({
+  // AccountStatus Model (Unchanged)
+  AccountStatus: a.model({
       totalUnapprovedInvoiceValue: a.float().required().default(0),
-    })
-    .authorization((allow) => [
-        allow.owner().to(['read']), // Owner can read their own status
-        allow.groups(['Admin']).to(['read', 'update']) // Admins can read/update ANY status record
-        // Note: Create might need owner rule if users should implicitly create their own on first access,
-        // or admin rule if only admins create the initial record.
-        // Let's assume owner rule implicit on create for now.
+    }).authorization((allow) => [
+        allow.owner().to(['read']),
+        allow.groups(['Admin']).to(['read', 'update']) // Use array for groups
     ]),
 
-  // CurrentAccountTransaction - Grant Admin create/read access
-  CurrentAccountTransaction: a
-    .model({
+  // CurrentAccountTransaction Model (Unchanged)
+  CurrentAccountTransaction: a.model({
         type: CurrentAccountTransactionType,
         amount: a.float().required(),
         description: a.string(),
-    })
-    .authorization((allow) => [
-        allow.owner().to(['read', 'delete']), // Owner can read/delete their own transactions
-        allow.groups(['Admin']).to(['create', 'read']) // Admins can read ANY and CREATE transactions (incl. for others if needed)
-        // Note: We need to ensure the 'owner' field is set correctly when Admins create
+    }).authorization((allow) => [
+        allow.owner().to(['read', 'delete']),
+        allow.groups(['Admin']).to(['read', 'create']) // Use array for groups
     ]),
+
+  // --- NEW: Add custom mutation for Admin ---
+  adminAddCashReceipt: a.mutation() // Define as a custom mutation
+      .arguments({ input: a.ref('AdminAddCashReceiptInput').required() }) // Use the custom input type
+      .returns(a.ref('CurrentAccountTransaction')) // It will return the created transaction
+      .authorization((allow) => [allow.groups(['Admin'])]) // Only Admins can call this
+      // We will link the handler (Lambda) in backend.ts or manually
 
 }); // End of a.schema({})
 
