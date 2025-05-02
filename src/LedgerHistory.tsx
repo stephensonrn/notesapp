@@ -1,74 +1,124 @@
-// src/LedgerHistory.jsx
+// src/LedgerHistory.tsx
 import React from 'react';
-import type { Schema } from '../amplify/data/resource'; // Import schema for entry type
+// Import the Schema type to understand the entry structures
+import type { Schema } from '../amplify/data/resource'; // Adjust path if needed
 
+// Define a combined type for the entries prop
+type TransactionEntry = Schema['LedgerEntry'] | Schema['CurrentAccountTransaction'];
+
+// Define the expected props
 interface LedgerHistoryProps {
-  entries: Schema['LedgerEntry'][];
+  entries: TransactionEntry[];
   isLoading: boolean;
+  historyType: 'sales' | 'account'; // Added prop to distinguish context
 }
 
-function LedgerHistory({ entries, isLoading }: LedgerHistoryProps) {
-  if (isLoading) {
-    return <p>Loading history...</p>;
+// Helper function to format numbers as GBP currency
+const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value);
+};
+
+// Helper function to determine the display text and sign styling
+const formatTransactionAmount = (
+    entry: TransactionEntry,
+    historyType: 'sales' | 'account'
+): { text: string; isNegative: boolean } => {
+
+  let displayAmount = entry.amount; // Amount stored is always positive
+  let isNegative = false;
+  let sign = '+'; // Default sign
+
+  if (historyType === 'sales') {
+    // Sales Ledger: Credit Notes and Decrease Adjustments are negative impacts
+    switch (entry.type) {
+      case 'CREDIT_NOTE':
+      case 'DECREASE_ADJUSTMENT':
+        isNegative = true;
+        sign = '-';
+        break;
+      // INVOICE and INCREASE_ADJUSTMENT use the default positive sign
+      default:
+        isNegative = false;
+        sign = '+';
+        break;
+    }
+  } else if (historyType === 'account') {
+    // Current Account: Cash Receipts are negative impacts (reduce balance owed)
+    switch (entry.type) {
+      case 'CASH_RECEIPT':
+        isNegative = true;
+        sign = '-';
+        break;
+      case 'PAYMENT_REQUEST': // Payment Requests are positive impacts (increase balance owed)
+        isNegative = false;
+        sign = '+';
+        break;
+      // Default case if unexpected type somehow appears
+      default:
+        isNegative = false;
+        sign = '?'; // Indicate unknown direction
+        break;
+    }
   }
 
-  if (entries.length === 0) {
+  // Format the absolute amount and prepend the sign
+  // Removing currency symbol from formatCurrency as we add it manually below
+  const formattedValue = formatCurrency(Math.abs(displayAmount)).replace(/£/g, '');
+
+  return {
+      text: `${sign} ${formattedValue}`,
+      isNegative: isNegative,
+  };
+};
+
+// The LedgerHistory component
+function LedgerHistory({ entries, isLoading, historyType }: LedgerHistoryProps) {
+  if (isLoading) {
+    return <p>Loading transaction history...</p>;
+  }
+
+  if (!entries || entries.length === 0) {
     return <p>No transactions recorded yet.</p>;
   }
 
-  // Function to format date/time nicely
-  const formatDate = (dateString: string | undefined | null) => {
-      if (!dateString) return '';
-      const options: Intl.DateTimeFormatOptions = {
-          year: 'numeric', month: 'short', day: 'numeric',
-          hour: '2-digit', minute: '2-digit', hour12: true
-      };
-      return new Date(dateString).toLocaleTimeString('en-GB', options);
-  }
-
-  // Function to format amount with sign based on type
-  const formatAmount = (entry: Schema['LedgerEntry']) => {
-      const isNegative = entry.type === 'CREDIT_NOTE' || entry.type === 'DECREASE_ADJUSTMENT';
-      const sign = isNegative ? '-' : '+';
-      const formatted = new Intl.NumberFormat('en-GB', {
-        style: 'currency',
-        currency: 'GBP' // Adjust currency
-      }).format(entry.amount);
-      // Remove currency symbol and add sign
-      return `${sign} ${formatted.replace(/[^0-9.-]+/g,"")}`;
-  }
-
-  // Function to format type string for display
-  const formatType = (type: string) => {
-      return type.replace(/_/g, ' ').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase());
-  }
-
-
   return (
-    <div style={{ marginTop: '20px' }}>
-      <h4>Transaction History</h4>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #eee', marginTop: '10px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
         <thead>
-          <tr>
-            <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>Date</th>
-            <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>Type</th>
-            <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>Description</th>
-            <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>Amount (£)</th>
+          <tr style={{ borderBottom: '2px solid black', textAlign: 'left', position: 'sticky', top: 0, background: 'white' }}>
+            <th style={{ padding: '8px' }}>Date</th>
+            <th style={{ padding: '8px' }}>Type</th>
+            <th style={{ padding: '8px' }}>Description</th>
+            <th style={{ padding: '8px', textAlign: 'right' }}>Amount (£)</th>
           </tr>
         </thead>
         <tbody>
-          {/* Render entries in reverse chronological order for display */}
-          {[...entries].reverse().map(entry => (
-            <tr key={entry.id}>
-              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{formatDate(entry.createdAt)}</td>
-              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{formatType(entry.type)}</td>
-              <td style={{ border: '1px solid #ddd', padding: '8px' }}>{entry.description}</td>
-              <td style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'right' }}>{formatAmount(entry)}</td>
-            </tr>
-          ))}
+          {/* Map over entries, applying formatting */}
+          {entries.map((entry) => {
+              // Get the formatted amount string and negativity flag
+              const { text: formattedAmountText, isNegative } = formatTransactionAmount(entry, historyType);
+              // Style negative amounts in red, positive in green (optional)
+              const amountStyle = { color: isNegative ? 'red' : 'green', textAlign: 'right' as const, padding: '8px' };
+              // Format the date nicely
+              const formattedDate = entry.createdAt
+                  ? new Date(entry.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : 'N/A';
+
+              return (
+                <tr key={entry.id} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '8px' }}>{formattedDate}</td>
+                  <td style={{ padding: '8px' }}>{entry.type}</td>
+                  <td style={{ padding: '8px' }}>{entry.description ?? ''}</td>
+                  <td style={amountStyle}>
+                    {formattedAmountText}
+                  </td>
+                </tr>
+              );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
+
 export default LedgerHistory;
