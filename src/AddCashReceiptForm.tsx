@@ -40,7 +40,6 @@ function AddCashReceiptForm() {
           type: 'CASH_RECEIPT', // Set type specifically
           amount: numericAmount,
           description: description || null,
-          owner: ownerIdInput // Explicitly set owner ID for record association
         },
         { authMode: 'userPool' } // Admin should be authenticated
       );
