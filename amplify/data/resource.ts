@@ -24,7 +24,7 @@ const schema = a.schema({
     })
     .authorization((allow) => [
         allow.owner().to(['read']), // Owner can read their own status
-        allow.groups('Admin').to(['read', 'update']) // Admins can read/update ANY status record
+        allow.groups(['Admin']).to(['read', 'update']) // Admins can read/update ANY status record
         // Note: Create might need owner rule if users should implicitly create their own on first access,
         // or admin rule if only admins create the initial record.
         // Let's assume owner rule implicit on create for now.
@@ -39,7 +39,7 @@ const schema = a.schema({
     })
     .authorization((allow) => [
         allow.owner().to(['read', 'delete']), // Owner can read/delete their own transactions
-        allow.groups('Admin').to(['create', 'read']) // Admins can read ANY and CREATE transactions (incl. for others if needed)
+        allow.groups(['Admin']).to(['create', 'read']) // Admins can read ANY and CREATE transactions (incl. for others if needed)
         // Note: We need to ensure the 'owner' field is set correctly when Admins create
     ]),
 
