@@ -1,19 +1,20 @@
 // src/AdminPage.tsx
 import React from 'react';
 import ManageAccountStatus from './ManageAccountStatus';
-import AddCashReceiptForm from './AddCashReceiptForm';
+import AddCashReceiptForm from './AddCashReceiptForm'; // Import the new form
+import { Flex } from '@aws-amplify/ui-react'; // Optional layout
 
 function AdminPage() {
-  // This page is already protected by the routing logic in App.tsx
   return (
-    <div>
-      <h2>Admin Section</h2>
-      <p>Manage backend data here.</p>
-      <hr />
+    <Flex direction="column" gap="large"> {/* Use Flex for layout */}
+      <Heading level={2}>Admin Section</Heading>
+      <Text>Manage backend data here.</Text>
+
       <ManageAccountStatus />
-      <hr style={{margin: '20px 0'}}/>
-      <AddCashReceiptForm />
-    </div>
+
+      <AddCashReceiptForm /> {/* Render the cash receipt form */}
+
+    </Flex>
   );
 }
 
