@@ -1,56 +1,51 @@
 // Filename: amplify/data/resource.ts
-// CORRECT version with CurrentAccountTransaction model
-
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 
-// Original Enum for Sales Ledger items
-const LedgerEntryType = a.enum([
-  'INVOICE',
-  'CREDIT_NOTE',
-  'INCREASE_ADJUSTMENT',
-  'DECREASE_ADJUSTMENT',
-]);
+// Enums remain the same
+const LedgerEntryType = a.enum([ 'INVOICE', 'CREDIT_NOTE', 'INCREASE_ADJUSTMENT', 'DECREASE_ADJUSTMENT' ]);
+const CurrentAccountTransactionType = a.enum([ 'PAYMENT_REQUEST', 'CASH_RECEIPT' ]);
 
-// --- NEW Enum for Current Account transactions ---
-const CurrentAccountTransactionType = a.enum([
-    'PAYMENT_REQUEST', // Represents funds drawn down / paid out (+)
-    'CASH_RECEIPT'     // Represents funds paid back / cash received (-)
-]);
-
-// Define the schema
 const schema = a.schema({
-  // LedgerEntry model - for sales ledger items only
+  // LedgerEntry - No auth change needed unless admins need access
   LedgerEntry: a
     .model({
-      type: LedgerEntryType, // Required by default
+      type: LedgerEntryType,
       amount: a.float().required(),
       description: a.string(),
-      // owner, id, createdAt, updatedAt added by @model/@auth
     })
-    .authorization((allow) => [allow.owner()]),
+    .authorization((allow) => [
+        allow.owner() // Only owner can manage these by default
+    ]),
 
-  // AccountStatus model - ONLY manual unapproved value now
+  // AccountStatus - Grant Admin read/update access
   AccountStatus: a
     .model({
       totalUnapprovedInvoiceValue: a.float().required().default(0),
-      // currentAccountBalance field REMOVED
-      // owner, id, createdAt, updatedAt added by @model/@auth
     })
-    .authorization((allow) => [ allow.owner() ]),
+    .authorization((allow) => [
+        allow.owner().to(['read']), // Owner can read their own status
+        allow.groups('Admin').to(['read', 'update']) // Admins can read/update ANY status record
+        // Note: Create might need owner rule if users should implicitly create their own on first access,
+        // or admin rule if only admins create the initial record.
+        // Let's assume owner rule implicit on create for now.
+    ]),
 
-  // --- NEW Model for Current Account Transactions ---
+  // CurrentAccountTransaction - Grant Admin create/read access
   CurrentAccountTransaction: a
     .model({
-        type: CurrentAccountTransactionType, // Required by default
-        amount: a.float().required(),      // Always store positive value of transaction
-        description: a.string(),           // Optional description
-        // owner, id, createdAt, updatedAt added by @model/@auth
+        type: CurrentAccountTransactionType,
+        amount: a.float().required(),
+        description: a.string(),
     })
-    .authorization((allow) => [ allow.owner() ]), // User owns their transactions
+    .authorization((allow) => [
+        allow.owner().to(['read', 'delete']), // Owner can read/delete their own transactions
+        allow.groups('Admin').to(['create', 'read']) // Admins can read ANY and CREATE transactions (incl. for others if needed)
+        // Note: We need to ensure the 'owner' field is set correctly when Admins create
+    ]),
 
 }); // End of a.schema({})
 
-// Define data resource
+// Define data resource - unchanged
 export const data = defineData({
   schema,
   authorizationModes: { defaultAuthorizationMode: 'userPool' },
