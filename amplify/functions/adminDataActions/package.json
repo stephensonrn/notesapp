@@ -1,22 +1,18 @@
-// Filename: amplify/functions/adminDataActions/package.json
 {
   "name": "admindataactions",
   "version": "1.0.0",
   "description": "Lambda function for admin data operations",
-  "main": "handler.ts", // Adjust if your compiled output is different
-  "type": "module", // Use ES Modules
+  "main": "handler.ts",
+  "type": "module",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.0.0", // Use appropriate versions
+    "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
-    "ulid": "^2.3.0" // Or latest version
+    "ulid": "^2.3.0"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.141", // Or latest version
-    "typescript": "^5.0.0" // Match your project's TS version
-    // Add bundler if needed (e.g., esbuild)
+    "@types/aws-lambda": "^8.10.141",
+    "typescript": "^5.0.0"
   },
   "scripts": {
-    // Add build script if you use TS and need compilation step before packaging
-    // "build": "tsc"
   }
 }
