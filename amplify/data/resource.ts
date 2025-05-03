@@ -1,74 +1,35 @@
 // Filename: amplify/data/resource.ts
-// CORRECTED version with inline input definition for custom mutation
+// CORRECTED version using scalar arguments for custom mutation
 
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
-// Import function resource needed for the handler link
-import { adminDataActionsFunction } from '../functions/adminDataActions/resource'; // Adjust path if necessary
+import { adminDataActionsFunction } from '../functions/adminDataActions/resource'; // Keep this import
 
-// Enums
-const LedgerEntryType = a.enum([
-  'INVOICE',
-  'CREDIT_NOTE',
-  'INCREASE_ADJUSTMENT',
-  'DECREASE_ADJUSTMENT',
-]);
-const CurrentAccountTransactionType = a.enum([
-  'PAYMENT_REQUEST',
-  'CASH_RECEIPT'
-]);
+// Enums remain the same
+const LedgerEntryType = a.enum([ 'INVOICE', 'CREDIT_NOTE', 'INCREASE_ADJUSTMENT', 'DECREASE_ADJUSTMENT' ]);
+const CurrentAccountTransactionType = a.enum([ 'PAYMENT_REQUEST', 'CASH_RECEIPT' ]);
 
-// Main Schema Definition
 const schema = a.schema({
-  // --- AdminAddCashReceiptInput definition REMOVED ---
-
-  // Models
-  LedgerEntry: a
-    .model({
-      type: LedgerEntryType,
-      amount: a.float().required(),
-      description: a.string(),
-    })
-    .authorization((allow) => [allow.owner()]),
-
-  AccountStatus: a
-    .model({
-      totalUnapprovedInvoiceValue: a.float().required().default(0),
-      // currentAccountBalance removed
-    })
-    .authorization((allow) => [
-        allow.owner().to(['read']),
-        allow.groups(['Admin']).to(['read', 'update']) // Use array for groups
-    ]),
-
-  CurrentAccountTransaction: a
-    .model({
-        type: CurrentAccountTransactionType,
-        amount: a.float().required(),
-        description: a.string(),
-    })
-    .authorization((allow) => [
-        allow.owner().to(['read', 'delete']),
-        allow.groups(['Admin']).to(['create', 'read']) // Use array for groups
-    ]),
+  // Models remain the same
+  LedgerEntry: a.model({ type: LedgerEntryType, amount: a.float().required(), description: a.string(), }).authorization((allow) => [allow.owner()]),
+  AccountStatus: a.model({ totalUnapprovedInvoiceValue: a.float().required().default(0), }).authorization((allow) => [allow.owner().to(['read']), allow.groups(['Admin']).to(['read', 'update'])]),
+  CurrentAccountTransaction: a.model({ type: CurrentAccountTransactionType, amount: a.float().required(), description: a.string(), }).authorization((allow) => [allow.owner().to(['read', 'delete']), allow.groups(['Admin']).to(['create', 'read'])]),
 
   // Custom mutation for Admin
   adminAddCashReceipt: a.mutation()
-      // --- Define arguments inline using a.input() ---
+      // --- FIX: Define arguments as separate scalars ---
       .arguments({
-          input: a.input({ // Creates an inline input type structure
-              targetOwnerId: a.string().required(),
-              amount: a.float().required(),
-              description: a.string()
-          }).required() // The 'input' argument itself is required
+          targetOwnerId: a.string().required(),
+          amount: a.float().required(),
+          description: a.string() // Optional scalar argument
       })
-      // --- End argument definition ---
-      .returns(a.ref('CurrentAccountTransaction')) // Returns the created transaction
-      .authorization((allow) => [allow.groups(['Admin'])]) // Only Admins can call
-      .handler(a.handler.function(adminDataActionsFunction)), // Link to the admin Lambda
+      // --- END FIX ---
+      .returns(a.ref('CurrentAccountTransaction'))
+      .authorization((allow) => [allow.groups(['Admin'])])
+      .handler(a.handler.function(adminDataActionsFunction)), // Keep handler link
 
 }); // End of a.schema({})
 
-// Define data resource
+// Define data resource - unchanged
 export const data = defineData({
   schema,
   authorizationModes: { defaultAuthorizationMode: 'userPool' },

@@ -1,15 +1,24 @@
 // src/AddCashReceiptForm.tsx
+// Updated for scalar mutation arguments
+
 import React, { useState } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource'; // Adjust path if needed
 import { Button, Flex, TextField, Text, View, Heading } from '@aws-amplify/ui-react';
 
-// Define the GraphQL mutation string MANUALLY
-// Note: We need to explicitly ask for fields to get them back in the response
+// --- FIX: Update Mutation String for scalar arguments ---
 const adminAddCashReceiptMutation = /* GraphQL */ `
-  mutation AdminAddCashReceipt($input: AdminAddCashReceiptInput!) {
-    adminAddCashReceipt(input: $input) {
-      id
+  mutation AdminAddCashReceipt(
+    $targetOwnerId: String!,
+    $amount: Float!,
+    $description: String
+  ) {
+    adminAddCashReceipt(
+      targetOwnerId: $targetOwnerId,
+      amount: $amount,
+      description: $description
+    ) {
+      id # Request fields you want back
       owner
       type
       amount
@@ -18,10 +27,12 @@ const adminAddCashReceiptMutation = /* GraphQL */ `
     }
   }
 `;
+// --- END FIX ---
 
-const client = generateClient<Schema>(); // Still useful for types
+const client = generateClient<Schema>(); // Keep client for types if needed
 
 function AddCashReceiptForm() {
+  // State remains the same
   const [ownerIdInput, setOwnerIdInput] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -33,96 +44,61 @@ function AddCashReceiptForm() {
     event.preventDefault();
     const numericAmount = parseFloat(amount);
 
-    if (!ownerIdInput) {
-        setError('Target User ID (Owner) is required.');
-        return;
-    }
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      setError("Please enter a valid positive amount for the cash receipt.");
-      return;
+    if (!ownerIdInput || isNaN(numericAmount) || numericAmount <= 0) {
+       setError('Please provide a valid Target User ID and a positive Amount.');
+       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+    setIsLoading(true); setError(null); setSuccess(null);
 
-    // Prepare variables for the custom mutation
+    // --- FIX: Prepare flat variables object ---
     const variables = {
-        input: {
-            targetOwnerId: ownerIdInput,
-            amount: numericAmount,
-            description: description || null
-        }
+        targetOwnerId: ownerIdInput,
+        amount: numericAmount,
+        description: description || null // Pass null if empty string
     };
-// --- ADD THIS LINE FOR DEBUGGING ---
-  console.log(">>> Variables being sent to adminAddCashReceipt:", JSON.stringify(variables, null, 2));
-  // --- END DEBUGGING LINE ---
+    // --- END FIX ---
+
     try {
       console.log("Calling adminAddCashReceipt mutation with variables:", variables);
-      // Use client.graphql to call the custom mutation
+      // Use client.graphql with updated mutation string and variables
       const result = await client.graphql({
         query: adminAddCashReceiptMutation,
-        variables: variables,
-        authMode: 'userPool' // Run as the authenticated admin user
+        variables: variables, // Pass flat variables object
+        authMode: 'userPool'
       });
 
       console.log("Admin Add Cash Receipt Result:", result);
-      const newTransaction = result.data?.adminAddCashReceipt; // Access result via mutation name
+      const newTransaction = result.data?.adminAddCashReceipt;
       const errors = result.errors;
 
-      if (errors) throw errors; // Throw if GraphQL layer returns errors
+      if (errors) throw errors;
       if (!newTransaction) throw new Error("Mutation did not return transaction data.");
 
       setSuccess(`Cash Receipt of £${numericAmount.toFixed(2)} added for owner ${ownerIdInput}. ID: ${newTransaction.id}`);
       // Clear form
-      setOwnerIdInput('');
-      setAmount('');
-      setDescription('');
+      setOwnerIdInput(''); setAmount(''); setDescription('');
 
     } catch (err: any) {
       console.error("Error creating cash receipt:", err);
-      // Handle potential errors array from GraphQL or general JS errors
-       let displayError = 'Unknown error.';
-       if (Array.isArray(err?.errors) && err.errors.length > 0 && err.errors[0].message) { displayError = err.errors[0].message;}
-       else if (err?.message) { displayError = err.message;}
-       else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore */ }}
-       setError(`Failed to add cash receipt: ${displayError}`);
+      let displayError = 'Unknown error.';
+      if (Array.isArray(err?.errors) && err.errors.length > 0 && err.errors[0].message) { displayError = err.errors[0].message;}
+      else if (err?.message) { displayError = err.message;}
+      else { try { displayError = JSON.stringify(err); } catch (e) { /* ignore */ }}
+      setError(`Failed to add cash receipt: ${displayError}`);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // JSX remains largely the same
   return (
-    <View as="form" onSubmit={handleSubmit} padding="medium" border="1px solid var(--amplify-colors-border-secondary)" borderRadius="medium">
+    <View as="form" onSubmit={handleSubmit} /* ... styles ... */ >
       <Heading level={4}>Add Cash Receipt Transaction</Heading>
       <Flex direction="column" gap="small">
-        <TextField
-          label="Target User ID (Owner GUID):"
-          id="cash-ownerId" // Use htmlFor if label is separate component
-          value={ownerIdInput}
-          onChange={(e) => setOwnerIdInput(e.target.value)}
-          placeholder="Enter Cognito User GUID"
-          isRequired={true}
-          isDisabled={isLoading}
-        />
-       <TextField
-          label="Amount Received:"
-          id="cash-amount" // Use htmlFor if label is separate component
-          type="number"
-          step="0.01"
-          min="0.01"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          isRequired={true}
-          isDisabled={isLoading}
-        />
-        <TextField
-          label="Description (Optional):"
-          id="cash-description" // Use htmlFor if label is separate component
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          isDisabled={isLoading}
-        />
+        <TextField label="Target User ID (Owner GUID):" id="cash-ownerId" value={ownerIdInput} onChange={(e) => setOwnerIdInput(e.target.value)} isRequired={true} isDisabled={isLoading} />
+        <TextField label="Amount Received:" id="cash-amount" type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} isRequired={true} isDisabled={isLoading} />
+        <TextField label="Description (Optional):" id="cash-description" value={description} onChange={(e) => setDescription(e.target.value)} isDisabled={isLoading} />
         <Button type="submit" variation="primary" isLoading={isLoading} isDisabled={isLoading}>
           Add Cash Receipt (- Balance)
         </Button>
