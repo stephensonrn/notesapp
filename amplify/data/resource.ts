@@ -1,6 +1,7 @@
 // Filename: amplify/data/resource.ts
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
-
+// Add near other imports at the top
+import { adminDataActionsFunction } from '../functions/adminDataActions/resource'; // Adjust path if your folder structure is different
 // Enums
 const LedgerEntryType = a.enum([ 'INVOICE', 'CREDIT_NOTE', 'INCREASE_ADJUSTMENT', 'DECREASE_ADJUSTMENT' ]);
 const CurrentAccountTransactionType = a.enum([ 'PAYMENT_REQUEST', 'CASH_RECEIPT' ]);
@@ -44,6 +45,8 @@ const schema = a.schema({
       .arguments({ input: a.ref('AdminAddCashReceiptInput').required() }) // Use the custom input type
       .returns(a.ref('CurrentAccountTransaction')) // It will return the created transaction
       .authorization((allow) => [allow.groups(['Admin'])]) // Only Admins can call this
+	  // --- ADD THIS LINE ---
+      .handler(a.handler.function(adminDataActionsFunction)), // Link to the Lambda resource
       // We will link the handler (Lambda) in backend.ts or manually
 
 }); // End of a.schema({})
