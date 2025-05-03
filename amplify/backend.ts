@@ -9,8 +9,11 @@ import { data } from './data/resource'; // Defines models + adminAddCashReceipt 
 export const backend = defineBackend({
   auth,
   data,
-  sendPaymentRequestFunction, // Include existing function
-  adminDataActionsFunction,   // Include new function
-  // NO postSynthesize
-  // Env vars and Permissions MUST be configured manually post-deploy
+  sendPaymentRequestFunction, // Include existing function resource definition
+  adminDataActionsFunction,   // Include new function resource definition
+  // NO postSynthesize or allowPolicies blocks
 });
+
+// NOTE: Env Vars (USER_POOL_ID, CURRENT_ACCT_TABLE_NAME for BOTH functions if needed)
+// AND IAM Permissions (SES, Cognito, DynamoDB for BOTH functions)
+// AND AppSync Resolvers (for BOTH mutations) MUST be configured manually post-deploy.
