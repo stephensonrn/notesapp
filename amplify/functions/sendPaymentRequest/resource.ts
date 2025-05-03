@@ -1,5 +1,7 @@
 import { defineFunction } from '@aws-amplify/backend-function';
-import * as path from 'path';
+// import * as path from 'path'; // No longer needed if using relative string
+
 export const sendPaymentRequestFunction = defineFunction({
-  entry: path.resolve(import.meta.dirname, 'handler.ts'),
+  // Use path relative to this file
+  entry: './handler.ts',
 });
