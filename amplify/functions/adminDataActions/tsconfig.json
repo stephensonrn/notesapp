@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    /* Basic Options */
+    "target": "ES2022", // Target modern ECMAScript for Node 20
+    "module": "NodeNext", // Use modern Node ES Module system
+    "moduleResolution": "NodeNext", // Module resolution strategy
+    "outDir": "./dist", // Output directory for compiled JS
+    "rootDir": ".", // Source directory (where handler.ts is)
+    "strict": true, // Enable all strict type-checking options
+    "esModuleInterop": true, // Enables compatibility with CommonJS modules
+    "skipLibCheck": true, // Skip type checking of declaration files
+    "forceConsistentCasingInFileNames": true, // Disallow inconsistently-cased references
+    "sourceMap": true, // Generate corresponding '.map' files for debugging
+    "resolveJsonModule": true, // Allow importing JSON modules
+    "declaration": false, // Don't generate .d.ts files for this runtime code
+
+    /* Module/Output Specifics */
+    // Adjust 'main' in package.json to point to './dist/handler.js' or './dist/index.js'
+    // Ensure package.json has "type": "module"
+
+    /* Type Checking */
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true, // Might require constructors if using classes
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    /* Advanced Options */
+    "isolatedModules": true // Ensure files can be transpiled independently (good practice)
+  },
+  "include": [
+    "handler.ts", // Or "**/*.ts" to include all TS files in this directory
+    // Add other .ts files if you have them
+  ],
+  "exclude": [
+    "node_modules", // Don't compile dependencies
+    "dist" // Don't compile the output directory
+  ]
+}

@@ -54,7 +54,9 @@ function AddCashReceiptForm() {
             description: description || null
         }
     };
-
+// --- ADD THIS LINE FOR DEBUGGING ---
+  console.log(">>> Variables being sent to adminAddCashReceipt:", JSON.stringify(variables, null, 2));
+  // --- END DEBUGGING LINE ---
     try {
       console.log("Calling adminAddCashReceipt mutation with variables:", variables);
       // Use client.graphql to call the custom mutation

@@ -2,7 +2,7 @@
   "name": "admindataactions",
   "version": "1.0.0",
   "description": "Lambda function for admin data operations",
-  "main": "handler.ts",
+  "main": "./dist/handler.js",
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",
@@ -11,8 +11,8 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.141",
-    "typescript": "^5.0.0"
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
   },
-  "scripts": {
-  }
+  "scripts": { "build": "tsc" }
 }
